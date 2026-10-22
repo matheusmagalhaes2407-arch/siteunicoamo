@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unicoamo - Gestão Integrada T&D</title>
+  
+  <!-- React & ReactDOM CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- Babel CDN for JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts: Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            unicoamo: {
+              green: '#00703C',
+              darkgreen: '#005830',
+              lightgreen: '#E6F3ED',
+              accent: '#EFA000',
+              gold: '#D48B00',
+              graybg: '#F4F6F8'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #F4F6F8;
+      font-family: 'Inter', sans-serif;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #00703C;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // CATALOGO DE TIPOS DE ATIVIDADES PARA O FORMULÁRIO DROPDOWN
+    const TIPOS_ATIVIDADE = [
+      { id: 'fechamento', titulo: 'Fechamento de Treinamento / Evento' },
+      { id: 'lista_sescoop', titulo: 'Lançamento de Presença / Planilha SESCOOP' },
+      { id: 'reserva_sala', titulo: 'Reserva de Sala / Anfiteatro' },
+      { id: 'cracha_material', titulo: 'Confecção de Crachás e Material Didático' },
+      { id: 'convocacao', titulo: 'Envio de Convocações e Agendamento Outlook' },
+      { id: 'outra', titulo: 'Atividade Personalizada / Demanda Direta' }
+    ];
+
+    function App() {
+      // ESTADO DE USUÁRIOS (PERSISTENTE NO BROWSER)
+      const [usuarios, setUsuarios] = useState(() => {
+        const saved = localStorage.getItem('unicoamo_usuarios');
+        return saved ? JSON.parse(saved) : [
+          { id: 'matheus', nome: 'Matheus Magalhães', cargo: 'Aprendiz Serv. Adm.', gestor: 'marcos', email: 'matheus@coamo.com.br', senha: '123' },
+          { id: 'marcos', nome: 'Marcos Alexandre', cargo: 'Aux. de Desenv. Pessoal', gestor: 'wagner', email: 'marcos@coamo.com.br', senha: '123' },
+          { id: 'gabriella', nome: 'Gabriella de Oliveira', cargo: 'Aux. de Desenv. Pessoal', gestor: 'wagner', email: 'gabriella@coamo.com.br', senha: '123' },
+          { id: 'franciny', nome: 'Franciny Gusmao', cargo: 'Analista de Desenv. Pessoal', gestor: 'wagner', email: 'franciny@coamo.com.br', senha: '123' },
+          { id: 'davi', nome: 'Davi de Castro', cargo: 'Aprendiz Serv. Adm.', gestor: 'wagner', email: 'davi@coamo.com.br', senha: '123' },
+          { id: 'wagner', nome: 'Wagner Amaro Branco', cargo: 'Supervisor de Desenv. Pessoal', gestor: null, email: 'wagner@coamo.com.br', senha: '123' }
+        ];
+      });
+
+      // USUÁRIO LOGADO ATUAL
+      const [usuarioLogado, setUsuarioLogado] = useState(null);
+
+      // FORMULÁRIO DE LOGIN E REGISTRO
+      const [telaLoginModo, setTelaLoginModo] = useState('login'); // 'login' ou 'cadastro'
+      const [loginEmail, setLoginEmail] = useState('');
+      const [loginSenha, setLoginSenha] = useState('');
+
+      const [novoPerfil, setNovoPerfil] = useState({
+        nome: '',
+        cargo: 'Aux. de Desenv. Pessoal',
+        gestor: 'wagner',
+        email: '',
+        senha: ''
+      });
+
+      // DADOS ZERADOS DO SISTEMA (PERSISTENTES)
+      const [demandas, setDemandas] = useState(() => {
+        const saved = localStorage.getItem('unicoamo_demandas');
+        return saved ? JSON.parse(saved) : [];
+      });
+
+      const [checklists, setChecklists] = useState(() => {
+        const saved = localStorage.getItem('unicoamo_checklists');
+        return saved ? JSON.parse(saved) : [];
+      });
+
+      // QUADRO "O QUE ESTOU FAZENDO AGORA"
+      const [statusEquipe, setStatusEquipe] = useState(() => {
+        const saved = localStorage.getItem('unicoamo_status_equipe');
+        return saved ? JSON.parse(saved) : {};
+      });
+
+      const [meuStatusInput, setMeuStatusInput] = useState('');
+
+      // ABRAS ATIVAS DA APLICAÇÃO
+      const [abaAtiva, setAbaAtiva] = useState('minhas_atividades'); 
+
+      // FORMULÁRIO DE NOVA DEMANDA
+      const [tipoSelecionado, setTipoSelecionado] = useState('');
+      const [novaDemanda, setNovaDemanda] = useState({
+        atribuidaA: '',
+        titulo: '',
+        turma: '',
+        solucao: '',
+        linkForms: '',
+        dataPrazo: '',
+        local: '',
+        observacao: ''
+      });
+
+      // NOVO ITEM CHECKLIST
+      const [tipoChecklist, setTipoChecklist] = useState('TREINAMENTO_INTERNO');
+      const [novoChecklist, setNovoChecklist] = useState({
+        turma: '', tipologia: 'CURSO', titulo: '', instrutor: '', data: '',
+        mes: 'NOV', horario: '', responsavelCDG: '', sessaoPIDP: '',
+        sala: 'Anfiteatro', convocacao: 'PENDENTE', outlookDDG: 'PENDENTE',
+        fechamentoUnicoamo: 'PENDENTE', fechamentoSescoop: 'PENDENTE'
+      });
+
+      // MODAL FECHAMENTO
+      const [modalFechamento, setModalFechamento] = useState(null);
+      const [dadosFechamento, setDadosFechamento] = useState({
+        relatorioTexto: '',
+        participantesSelecionados: []
+      });
+
+      // SALVAR NO LOCALSTORAGE
+      useEffect(() => {
+        localStorage.setItem('unicoamo_usuarios', JSON.stringify(usuarios));
+      }, [usuarios]);
+
+      useEffect(() => {
+        localStorage.setItem('unicoamo_demandas', JSON.stringify(demandas));
+      }, [demandas]);
+
+      useEffect(() => {
+        localStorage.setItem('unicoamo_checklists', JSON.stringify(checklists));
+      }, [checklists]);
+
+      useEffect(() => {
+        localStorage.setItem('unicoamo_status_equipe', JSON.stringify(statusEquipe));
+      }, [statusEquipe]);
+
+      // EFETUAR LOGIN
+      const handleLogin = (e) => {
+        e.preventDefault();
+        const user = usuarios.find(u => u.email.toLowerCase() === loginEmail.toLowerCase() && u.senha === loginSenha);
+        if (user) {
+          setUsuarioLogado(user);
+          setMeuStatusInput(statusEquipe[user.id]?.texto || '');
+        } else {
+          alert('E-mail ou senha incorretos! Tente novamente.');
+        }
+      };
+
+      // CRIAR NOVO PERFIL DE ACESSO
+      const handleCadastrarPerfil = (e) => {
+        e.preventDefault();
+        if (usuarios.some(u => u.email.toLowerCase() === novoPerfil.email.toLowerCase())) {
+          alert('Este e-mail já está cadastrado no sistema.');
+          return;
+        }
+
+        const idNovo = novoPerfil.nome.toLowerCase().replace(/\s+/g, '_');
+        const novouser = {
+          id: idNovo,
+          nome: novoPerfil.nome,
+          cargo: novoPerfil.cargo,
+          gestor: novoPerfil.gestor,
+          email: novoPerfil.email,
+          senha: novoPerfil.senha
+        };
+
+        setUsuarios([...usuarios, novouser]);
+        alert('Perfil criado com sucesso! Agora você já pode fazer login.');
+        setTelaLoginModo('login');
+        setLoginEmail(novoPerfil.email);
+        setLoginSenha(novoPerfil.senha);
+      };
+
+      // ATUALIZAR STATUS NO PAINEL "O QUE ESTOU FAZENDO"
+      const handleAtualizarMeuStatus = (e) => {
+        e.preventDefault();
+        if (!meuStatusInput.trim()) return;
+
+        const agora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        setStatusEquipe({
+          ...statusEquipe,
+          [usuarioLogado.id]: {
+            usuarioNome: usuarioLogado.nome,
+            cargo: usuarioLogado.cargo,
+            texto: meuStatusInput,
+            horario: agora
+          }
+        });
+        alert('Seu status foi atualizado para a equipe!');
+      };
+
+      // CRIAR NOVA DEMANDA
+      const handleCriarDemanda = (e) => {
+        e.preventDefault();
+        if (!tipoSelecionado) {
+          alert('Selecione o tipo de atividade no menu suspenso.');
+          return;
+        }
+
+        const executorId = novaDemanda.atribuidaA || usuarioLogado.id;
+        const item = {
+          id: Date.now(),
+          tipo: tipoSelecionado,
+          titulo: novaDemanda.titulo,
+          atribuidoPor: usuarioLogado.nome,
+          atribuidoPorId: usuarioLogado.id,
+          atribuidoA: executorId,
+          status: 'PENDENTE',
+          dataCriacao: new Date().toLocaleDateString('pt-BR'),
+          dataPrazo: novaDemanda.dataPrazo || 'A definir',
+          detalhes: { ...novaDemanda }
+        };
+
+        setDemandas([item, ...demandas]);
+        alert('Atividade atribuída com sucesso!');
+        setTipoSelecionado('');
+      };
+
+      // CRIAR NOVO ITEM DE CHECKLIST
+      const handleCriarChecklist = (e) => {
+        e.preventDefault();
+        const item = {
+          id: Date.now(),
+          tipoTipo: tipoChecklist,
+          responsavelCDG: usuarioLogado.nome.split(' ')[0],
+          ...novoChecklist
+        };
+        setChecklists([item, ...checklists]);
+        alert('Registro cadastrado no checklist!');
+        setNovoChecklist({
+          turma: '', tipologia: 'CURSO', titulo: '', instrutor: '', data: '',
+          mes: 'NOV', horario: '', responsavelCDG: '', sessaoPIDP: '',
+          sala: 'Anfiteatro', convocacao: 'PENDENTE', outlookDDG: 'PENDENTE',
+          fechamentoUnicoamo: 'PENDENTE', fechamentoSescoop: 'PENDENTE'
+        });
+      };
+
+      // CONCLUIR FECHAMENTO
+      const handleSalvarFechamento = (e) => {
+        e.preventDefault();
+        setDemandas(demandas.map(d => {
+          if (d.id === modalFechamento.id) {
+            return {
+              ...d,
+              status: 'CONCLUÍDO',
+              fechamentoInfo: { ...dadosFechamento }
+            };
+          }
+          return d;
+        }));
+        alert('Fechamento de treinamento concluído com sucesso!');
+        setModalFechamento(null);
+      };
+
+      // TELA DE LOGIN / CADASTRO DE PERFIL
+      if (!usuarioLogado) {
+        return (
+          <div className="min-h-screen bg-slate-100 flex flex-col justify-center items-center p-4">
+            <div className="max-w-md w-full bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+              
+              {/* CABEÇALHO DA TELA DE LOGIN */}
+              <div className="bg-[#00703C] p-6 text-white text-center border-b-4 border-[#EFA000]">
+                <div className="inline-block bg-white px-3 py-1 rounded mb-2">
+                  <span className="text-[#00703C] font-extrabold text-2xl tracking-tighter">
+                    uní<span className="text-[#EFA000]">coamo</span>
+                  </span>
+                </div>
+                <h1 className="text-base font-bold">Portal Integrado de T&D e Eventos</h1>
+                <p className="text-xs text-green-100 mt-1">Acesso Restrito do Setor Unicoamo</p>
+              </div>
+
+              <div className="p-6">
+                
+                {/* ABAS LOGIN E CRIAR PERFIL */}
+                <div className="flex border-b border-slate-200 mb-5">
+                  <button 
+                    onClick={() => setTelaLoginModo('login')}
+                    className={`flex-1 py-2 text-xs font-bold text-center border-b-2 ${
+                      telaLoginModo === 'login' ? 'border-[#00703C] text-[#00703C]' : 'border-transparent text-slate-400'
+                    }`}
+                  >
+                    Entrar com Perfil
+                  </button>
+                  <button 
+                    onClick={() => setTelaLoginModo('cadastro')}
+                    className={`flex-1 py-2 text-xs font-bold text-center border-b-2 ${
+                      telaLoginModo === 'cadastro' ? 'border-[#00703C] text-[#00703C]' : 'border-transparent text-slate-400'
+                    }`}
+                  >
+                    + Criar Novo Perfil
+                  </button>
+                </div>
+
+                {/* FORMULÁRIO DE LOGIN */}
+                {telaLoginModo === 'login' ? (
+                  <form onSubmit={handleLogin} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">E-mail Corporativo:</label>
+                      <input 
+                        type="email" 
+                        required
+                        placeholder="seu.nome@coamo.com.br"
+                        value={loginEmail}
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                        className="w-full text-xs p-2.5 border border-slate-300 rounded focus:ring-2 focus:ring-[#00703C]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Senha de Acesso:</label>
+                      <input 
+                        type="password" 
+                        required
+                        placeholder="••••••••"
+                        value={loginSenha}
+                        onChange={(e) => setLoginSenha(e.target.value)}
+                        className="w-full text-xs p-2.5 border border-slate-300 rounded focus:ring-2 focus:ring-[#00703C]"
+                      />
+                    </div>
+
+                    <button 
+                      type="submit"
+                      className="w-full bg-[#00703C] hover:bg-[#005830] text-white font-bold py-2.5 rounded shadow text-xs transition-all"
+                    >
+                      Acessar Meu Painel Privado
+                    </button>
+                  </form>
+                ) : (
+                  
+                  /* FORMULÁRIO DE CADASTRO DE NOVO PERFIL */
+                  <form onSubmit={handleCadastrarPerfil} className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Nome Completo:</label>
+                      <input 
+                        type="text" 
+                        required
+                        placeholder="Ex: Matheus Magalhães"
+                        value={novoPerfil.nome}
+                        onChange={(e) => setNovoPerfil({ ...novoPerfil, nome: e.target.value })}
+                        className="w-full text-xs p-2 border border-slate-300 rounded"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Cargo / Função na Unicoamo:</label>
+                      <select 
+                        value={novoPerfil.cargo}
+                        onChange={(e) => setNovoPerfil({ ...novoPerfil, cargo: e.target.value })}
+                        className="w-full text-xs p-2 border border-slate-300 rounded bg-white"
+                      >
+                        <option value="Supervisor de Desenv. Pessoal">Supervisor de Desenv. Pessoal</option>
+                        <option value="Analista de Desenv. Pessoal">Analista de Desenv. Pessoal</option>
+                        <option value="Aux. de Desenv. Pessoal">Aux. de Desenv. Pessoal</option>
+                        <option value="Aprendiz Serv. Adm.">Aprendiz Serv. Adm.</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">E-mail Corporativo:</label>
+                      <input 
+                        type="email" 
+                        required
+                        placeholder="email@coamo.com.br"
+                        value={novoPerfil.email}
+                        onChange={(e) => setNovoPerfil({ ...novoPerfil, email: e.target.value })}
+                        className="w-full text-xs p-2 border border-slate-300 rounded"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">Senha Privada:</label>
+                      <input 
+                        type="password" 
+                        required
+                        placeholder="Defina sua senha"
+                        value={novoPerfil.senha}
+                        onChange={(e) => setNovoPerfil({ ...novoPerfil, senha: e.target.value })}
+                        className="w-full text-xs p-2 border border-slate-300 rounded"
+                      />
+                    </div>
+
+                    <button 
+                      type="submit"
+                      className="w-full bg-[#EFA000] hover:bg-[#D48B00] text-slate-900 font-extrabold py-2.5 rounded shadow text-xs transition-all mt-2"
+                    >
+                      Cadastrar Perfil
+                    </button>
+                  </form>
+                )}
+
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // FILTRAGEM PRIVADA: CADA USUÁRIO SÓ VÊ SUAS TAREFAS OU TAREFAS QUE ELE ATRIBUIU
+      const minhasDemandas = demandas.filter(d => 
+        d.atribuidoA === usuarioLogado.id || 
+        d.atribuidoPorId === usuarioLogado.id || 
+        usuarioLogado.cargo.includes('Supervisor')
+      );
+
+      return (
+        <div className="min-h-screen flex flex-col">
+          
+          {/* CABEÇALHO COM LOGO E USUÁRIO LOGADO */}
+          <header className="bg-[#00703C] text-white shadow-md border-b-4 border-[#EFA000]">
+            <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+              
+              <div className="flex items-center gap-3">
+                <div className="bg-white px-3 py-1 rounded shadow-xs flex items-center justify-center">
+                  <span className="text-[#00703C] font-extrabold text-2xl tracking-tighter">
+                    uní<span className="text-[#EFA000]">coamo</span>
+                  </span>
+                </div>
+                <div>
+                  <h1 className="text-base font-bold tracking-wide">UNIVERSIDADE CORPORATIVA</h1>
+                  <p className="text-[11px] text-green-100">Painel Privado de Gestão de Atividades</p>
+                </div>
+              </div>
+
+              {/* PERFIL DO USUÁRIO LOGADO */}
+              <div className="flex items-center gap-3 bg-[#005830] px-3 py-1.5 rounded-lg border border-emerald-600/50">
+                <div className="text-right">
+                  <div className="text-xs font-bold">{usuarioLogado.nome}</div>
+                  <div className="text-[10px] text-emerald-200">{usuarioLogado.cargo}</div>
+                </div>
+                <button 
+                  onClick={() => setUsuarioLogado(null)}
+                  className="bg-red-600 hover:bg-red-700 text-white text-[10px] font-bold py-1 px-2 rounded"
+                >
+                  Sair
+                </button>
+              </div>
+
+            </div>
+          </header>
+
+          {/* MENU DE NAVEGAÇÃO PRINCIPAL */}
+          <nav className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+            <div className="max-w-7xl mx-auto px-4 flex overflow-x-auto space-x-2 sm:space-x-4">
+              
+              <button 
+                onClick={() => setAbaAtiva('minhas_atividades')}
+                className={`py-3 px-3 text-xs font-bold uppercase border-b-2 whitespace-nowrap ${
+                  abaAtiva === 'minhas_atividades' ? 'border-[#00703C] text-[#00703C] bg-emerald-50/50' : 'border-transparent text-slate-500'
+                }`}
+              >
+                Minhas Atividades & Atribuições
+              </button>
+
+              <button 
+                onClick={() => setAbaAtiva('status_equipe')}
+                className={`py-3 px-3 text-xs font-bold uppercase border-b-2 whitespace-nowrap flex items-center gap-1.5 ${
+                  abaAtiva === 'status_equipe' ? 'border-[#00703C] text-[#00703C] bg-emerald-50/50' : 'border-transparent text-slate-500'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                O Que Estou Fazendo Agora (Mural)
+              </button>
+
+              <button 
+                onClick={() => setAbaAtiva('checklist')}
+                className={`py-3 px-3 text-xs font-bold uppercase border-b-2 whitespace-nowrap ${
+                  abaAtiva === 'checklist' ? 'border-[#00703C] text-[#00703C] bg-emerald-50/50' : 'border-transparent text-slate-500'
+                }`}
+              >
+                Checklist Unicoamo
+              </button>
+
+              <button 
+                onClick={() => setAbaAtiva('calendario')}
+                className={`py-3 px-3 text-xs font-bold uppercase border-b-2 whitespace-nowrap ${
+                  abaAtiva === 'calendario' ? 'border-[#00703C] text-[#00703C] bg-emerald-50/50' : 'border-transparent text-slate-500'
+                }`}
+              >
+                Calendário Geral
+              </button>
+
+            </div>
+          </nav>
+
+          {/* CONTEÚDO PRINCIPAL */}
+          <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
+            
+            {/* ABA 1: MINHAS ATIVIDADES & FORMULÁRIO DE ATRIBUIÇÃO */}
+            {abaAtiva === 'minhas_atividades' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                {/* FORMULÁRIO COM MENU SUSPENSO */}
+                <div className="lg:col-span-5 bg-white p-5 rounded-lg border border-slate-200 shadow-sm space-y-4">
+                  <div className="border-b pb-2">
+                    <h2 className="text-base font-bold text-[#00703C]">Atribuir Nova Atividade</h2>
+                    <p className="text-xs text-slate-500">Selecione o tipo no menu suspenso para preencher os dados.</p>
+                  </div>
+
+                  <form onSubmit={handleCriarDemanda} className="space-y-3 text-xs">
+                    
+                    {/* DROPDOWN DE TIPO DE ATIVIDADE */}
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">1. Selecione a Atividade (Menu Suspenso) *</label>
+                      <select 
+                        value={tipoSelecionado}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          setTipoSelecionado(id);
+                          const config = TIPOS_ATIVIDADE.find(t => t.id === id);
+                          if (config) setNovaDemanda(p => ({ ...p, titulo: config.titulo }));
+                        }}
+                        required
+                        className="w-full p-2 border border-slate-300 rounded bg-slate-50 font-semibold text-slate-800"
+                      >
+                        <option value="">-- Clique para selecionar a atividade --</option>
+                        {TIPOS_ATIVIDADE.map(t => (
+                          <option key={t.id} value={t.id}>{t.titulo}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* DROPDOWN DE COLABORADORES */}
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">2. Atribuir Para *</label>
+                      <select 
+                        value={novaDemanda.atribuidaA || usuarioLogado.id}
+                        onChange={(e) => setNovaDemanda({ ...novaDemanda, atribuidaA: e.target.value })}
+                        required
+                        className="w-full p-2 border border-slate-300 rounded bg-white"
+                      >
+                        {usuarios.map(u => (
+                          <option key={u.id} value={u.id}>
+                            {u.nome} ({u.cargo})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* CAMPOS DINÂMICOS CONFORME A ATIVIDADE SELECIONADA */}
+                    {tipoSelecionado && (
+                      <div className="bg-emerald-50/60 p-3 rounded border border-emerald-200 space-y-2">
+                        <div>
+                          <label className="block font-medium text-slate-600">Turma / Código / Projeto:</label>
+                          <input 
+                            type="text" 
+                            placeholder="Ex: 4778/2026"
+                            value={novaDemanda.turma}
+                            onChange={(e) => setNovaDemanda({ ...novaDemanda, turma: e.target.value })}
+                            className="w-full p-1.5 bg-white border border-slate-300 rounded"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block font-medium text-slate-600">Solução / Título do Treinamento:</label>
+                          <input 
+                            type="text" 
+                            placeholder="Ex: Liderança e Comunicação"
+                            value={novaDemanda.solucao}
+                            onChange={(e) => setNovaDemanda({ ...novaDemanda, solucao: e.target.value })}
+                            className="w-full p-1.5 bg-white border border-slate-300 rounded"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block font-medium text-slate-600">Data Prazo Limite:</label>
+                          <input 
+                            type="date" 
+                            value={novaDemanda.dataPrazo}
+                            onChange={(e) => setNovaDemanda({ ...novaDemanda, dataPrazo: e.target.value })}
+                            className="w-full p-1.5 bg-white border border-slate-300 rounded"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block font-medium text-slate-600">Orientações Específicas:</label>
+                          <textarea 
+                            rows="3"
+                            placeholder="Detalhes adicionais do que deve ser feito..."
+                            value={novaDemanda.observacao}
+                            onChange={(e) => setNovaDemanda({ ...novaDemanda, observacao: e.target.value })}
+                            className="w-full p-2 bg-white border border-slate-300 rounded"
+                          ></textarea>
+                        </div>
+
+                        <button 
+                          type="submit"
+                          className="w-full bg-[#00703C] hover:bg-[#005830] text-white font-bold py-2 rounded shadow transition-all mt-2"
+                        >
+                          Atribuir Atividade
+                        </button>
+                      </div>
+                    )}
+
+                  </form>
+                </div>
+
+                {/* PAINEL PRIVADO DE DEMANDAS */}
+                <div className="lg:col-span-7 space-y-4">
+                  <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex justify-between items-center">
+                    <h3 className="text-sm font-bold text-slate-800">Minhas Atividades & Demandas Criadas</h3>
+                    <span className="bg-emerald-100 text-[#00703C] text-xs font-bold px-2.5 py-0.5 rounded-full">
+                      {minhasDemandas.length} Item(ns)
+                    </span>
+                  </div>
+
+                  {minhasDemandas.length === 0 ? (
+                    <div className="bg-white p-8 rounded-lg border border-dashed border-slate-300 text-center text-slate-400">
+                      Nenhuma atividade atribuída no momento. Utilize o formulário ao lado para cadastrar a primeira demanda.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {minhasDemandas.map(item => {
+                        const executor = usuarios.find(u => u.id === item.atribuidoA);
+                        return (
+                          <div key={item.id} className="bg-white p-4 rounded-lg border border-slate-200 shadow-xs space-y-2">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <span className="text-[10px] font-bold text-[#00703C] bg-emerald-100 px-2 py-0.5 rounded">
+                                  {item.titulo}
+                                </span>
+                                <h4 className="text-sm font-bold text-slate-800 mt-1">
+                                  {item.detalhes?.solucao ? `${item.detalhes.solucao} (${item.detalhes.turma})` : item.titulo}
+                                </h4>
+                              </div>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                item.status === 'CONCLUÍDO' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                              }`}>
+                                {item.status}
+                              </span>
+                            </div>
+
+                            <div className="text-xs text-slate-600 bg-slate-50 p-2 rounded grid grid-cols-2 gap-1">
+                              <div><strong>Atribuído Por:</strong> {item.atribuidoPor}</div>
+                              <div><strong>Executante:</strong> {executor?.nome || item.atribuidoA}</div>
+                              <div><strong>Prazo:</strong> {item.dataPrazo}</div>
+                            </div>
+
+                            <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
+                              {item.tipo === 'fechamento' && item.status === 'PENDENTE' && (
+                                <button 
+                                  onClick={() => setModalFechamento(item)}
+                                  className="bg-[#00703C] text-white text-xs font-bold py-1 px-3 rounded shadow"
+                                >
+                                  Fazer Fechamento
+                                </button>
+                              )}
+                              {item.status === 'PENDENTE' && item.tipo !== 'fechamento' && (
+                                <button 
+                                  onClick={() => setDemandas(demandas.map(d => d.id === item.id ? { ...d, status: 'CONCLUÍDO' } : d))}
+                                  className="bg-emerald-600 text-white text-xs font-bold py-1 px-3 rounded shadow"
+                                >
+                                  Marcar Concluído
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            )}
+
+            {/* ABA 2: PAINEL "O QUE ESTOU FAZENDO AGORA" (MURAL EM TEMPO REAL) */}
+            {abaAtiva === 'status_equipe' && (
+              <div className="space-y-6">
+                
+                {/* CAIXA DE ATUALIZAÇÃO DE STATUS DO USUÁRIO LOGADO */}
+                <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm space-y-3">
+                  <h2 className="text-base font-bold text-[#00703C] flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping"></span>
+                    Atualizar Meu Status de Trabalho
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Escreva abaixo o que você está fazendo neste momento para que toda a equipe da Unicoamo saiba sua disponibilidade.
+                  </p>
+
+                  <form onSubmit={handleAtualizarMeuStatus} className="flex gap-2">
+                    <input 
+                      type="text" 
+                      required
+                      placeholder="Ex: Em reunião de fechamento com SESCOOP / No Anfiteatro preparando sala..."
+                      value={meuStatusInput}
+                      onChange={(e) => setMeuStatusInput(e.target.value)}
+                      className="flex-1 text-xs p-2.5 border border-slate-300 rounded"
+                    />
+                    <button 
+                      type="submit"
+                      className="bg-[#00703C] hover:bg-[#005830] text-white font-bold text-xs px-4 rounded shadow whitespace-nowrap"
+                    >
+                      Publicar Status
+                    </button>
+                  </form>
+                </div>
+
+                {/* MURAL DE VISUALIZAÇÃO DE TODA A EQUIPE */}
+                <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm space-y-4">
+                  <h3 className="text-sm font-bold text-slate-800 border-b pb-2">
+                    Status Atual da Equipe Unicoamo
+                  </h3>
+
+                  {Object.keys(statusEquipe).length === 0 ? (
+                    <div className="p-8 text-center text-slate-400 bg-slate-50 rounded border border-dashed text-xs">
+                      Nenhum colaborador publicou status ainda hoje. Seja o primeiro a publicar acima!
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {Object.entries(statusEquipe).map(([userId, st]) => (
+                        <div key={userId} className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-2">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h4 className="text-xs font-extrabold text-slate-800">{st.usuarioNome}</h4>
+                              <p className="text-[10px] text-slate-500">{st.cargo}</p>
+                            </div>
+                            <span className="text-[10px] text-emerald-800 font-bold bg-emerald-100 px-2 py-0.5 rounded">
+                              {st.horario}
+                            </span>
+                          </div>
+
+                          <div className="bg-white p-2.5 rounded border border-slate-200 text-xs text-slate-700 italic">
+                            "{st.texto}"
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            )}
+
+            {/* ABA 3: CHECKLIST UNICOAMO */}
+            {abaAtiva === 'checklist' && (
+              <div className="space-y-6">
+                <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+                  <h3 className="text-xs font-bold text-slate-700 uppercase mb-3">Cadastrar Evento/Treinamento no Checklist</h3>
+                  <form onSubmit={handleCriarChecklist} className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <input 
+                      type="text" 
+                      required 
+                      placeholder="Turma (Ex: Pós-GTA)"
+                      value={novoChecklist.turma}
+                      onChange={(e) => setNovoChecklist({ ...novoChecklist, turma: e.target.value })}
+                      className="p-1.5 border border-slate-300 rounded"
+                    />
+                    <input 
+                      type="text" 
+                      required 
+                      placeholder="Título / Solução (Ex: ESG)"
+                      value={novoChecklist.titulo}
+                      onChange={(e) => setNovoChecklist({ ...novoChecklist, titulo: e.target.value })}
+                      className="p-1.5 border border-slate-300 rounded"
+                    />
+                    <input 
+                      type="text" 
+                      placeholder="Instrutor"
+                      value={novoChecklist.instrutor}
+                      onChange={(e) => setNovoChecklist({ ...novoChecklist, instrutor: e.target.value })}
+                      className="p-1.5 border border-slate-300 rounded"
+                    />
+                    <button type="submit" className="bg-[#00703C] text-white font-bold py-1.5 rounded shadow col-span-1 sm:col-span-3">
+                      + Adicionar ao Checklist
+                    </button>
+                  </form>
+                </div>
+
+                <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-x-auto">
+                  <table className="w-full text-xs text-left border-collapse">
+                    <thead className="bg-[#00703C] text-white uppercase font-bold text-[10px]">
+                      <tr>
+                        <th className="p-2 border-r border-emerald-700">Turma</th>
+                        <th className="p-2 border-r border-emerald-700">Título</th>
+                        <th className="p-2 border-r border-emerald-700">Instrutor</th>
+                        <th className="p-2 border-r border-emerald-700">Responsável</th>
+                        <th className="p-2 border-r border-emerald-700 text-center">Status Fechamento</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {checklists.length === 0 ? (
+                        <tr><td colSpan="5" className="p-6 text-center text-slate-400">Nenhum registro cadastrado no checklist.</td></tr>
+                      ) : (
+                        checklists.map((c, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="p-2 font-bold">{c.turma}</td>
+                            <td className="p-2">{c.titulo}</td>
+                            <td className="p-2">{c.instrutor || '-'}</td>
+                            <td className="p-2">{c.responsavelCDG}</td>
+                            <td className="p-2 text-center font-bold text-amber-700">{c.fechamentoUnicoamo}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ABA 4: CALENDÁRIO GERAL */}
+            {abaAtiva === 'calendario' && (
+              <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm space-y-4">
+                <h2 className="text-base font-bold text-[#00703C]">Calendário Geral Sincronizado</h2>
+                {checklists.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 bg-slate-50 rounded border border-dashed text-xs">
+                    Nenhum evento no calendário. Os registros do checklist aparecem aqui automaticamente.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    {checklists.map((ev, i) => (
+                      <div key={i} className="bg-slate-50 border p-3 rounded space-y-1 text-xs">
+                        <span className="font-bold text-[#00703C]">{ev.turma}</span>
+                        <h4 className="font-bold text-slate-800">{ev.titulo}</h4>
+                        <div className="text-slate-500">Resp: {ev.responsavelCDG}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+          </main>
+
+          {/* MODAL FECHAMENTO */}
+          {modalFechamento && (
+            <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full p-5 space-y-4 text-xs">
+                <h3 className="text-sm font-bold text-[#00703C] border-b pb-2">Fechamento do Treinamento</h3>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Texto do Relatório:</label>
+                  <textarea 
+                    rows="3"
+                    placeholder="Escreva o relatório final..."
+                    value={dadosFechamento.relatorioTexto}
+                    onChange={(e) => setDadosFechamento({ ...dadosFechamento, relatorioTexto: e.target.value })}
+                    className="w-full p-2 border border-slate-300 rounded"
+                  ></textarea>
+                </div>
+                <div className="flex justify-end gap-2 pt-2 border-t">
+                  <button onClick={() => setModalFechamento(null)} className="px-3 py-1.5 bg-slate-200 rounded font-bold">Cancelar</button>
+                  <button onClick={handleSalvarFechamento} className="px-3 py-1.5 bg-[#00703C] text-white rounded font-bold">Concluir Fechamento</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>
